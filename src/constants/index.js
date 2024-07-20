@@ -5,9 +5,8 @@ export const SORT_ORDER = {
   DESC: 'desc',
 };
 
-export const FIFTEEN_MINUTES = 30 * 60 * 1000;
-
-export const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+export const FIFTEEN_MINUTES = 5 * 60 * 1000;
+export const ONE_DAY = 24 * 60 * 60 * 1000;
 
 export const SMTP = {
   SMTP_HOST: 'SMTP_HOST',

@@ -1,13 +1,12 @@
-import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import createHttpError from 'http-errors';
 import { User } from '../db/models/user.js';
 import { Session } from '../db/models/session.js';
 import {
   FIFTEEN_MINUTES,
+  ONE_DAY,
   SMTP,
   TEMPLATES_DIR,
-  THIRTY_DAYS,
 } from '../constants/index.js';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../utils/sendMail.js';
@@ -17,11 +16,14 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 
 const createSession = () => {
+  const accessToken = randomBytes(30).toString('base64');
+  const refreshToken = randomBytes(30).toString('base64');
+
   return {
-    accessToken: crypto.randomBytes(40).toString('base64'),
-    refreshToken: crypto.randomBytes(40).toString('base64'),
+    accessToken,
+    refreshToken,
     accessTokenValidUntil: new Date(Date.now() + FIFTEEN_MINUTES),
-    refreshTokenValidUntil: new Date(Date.now() + THIRTY_DAYS),
+    refreshTokenValidUntil: new Date(Date.now() + ONE_DAY),
   };
 };
 
@@ -31,6 +33,7 @@ export const checkPassword = async (inputPassword, storedPassword) => {
   return await bcrypt.compare(inputPassword, storedPassword);
 };
 
+// ********** registerUser Service  *************
 export const registerUser = async (payload) => {
   const user = await User.findOne({ email: payload.email });
   if (user) throw createHttpError(409, 'Email in use');
@@ -51,61 +54,54 @@ export const loginUser = async (payload) => {
   if (!user) {
     throw createHttpError(404, 'User not found');
   }
-  const isEqual = await bcrypt.compare(payload.password, user.password);
 
+  const isEqual = await bcrypt.compare(payload.password, user.password);
   if (!isEqual) {
     throw createHttpError(401, 'Unauthorized');
   }
 
-  await Session.deleteOne({ userId: user._id });
+  await Sessions.deleteOne({ userId: user._id });
 
-  const accessToken = randomBytes(30).toString('base64');
-  const refreshToken = randomBytes(30).toString('base64');
+  const newSession = createSession();
 
   return await Session.create({
     userId: user._id,
-    accessToken,
+    ...newSession,
+  });
+};
+
+// ********** refreshUsersSession Service  *************
+export const refreshUsersSession = async ({ sessionId, refreshToken }) => {
+  const session = await SessionsCollection.findOne({
+    _id: sessionId,
     refreshToken,
-    accessTokenValidUntil: new Date(Date.now() + FIFTEEN_MINUTES),
-    refreshTokenValidUntil: new Date(Date.now() + ONE_DAY),
+  });
+
+  if (!session) {
+    throw createHttpError(401, 'Session not found');
+  }
+
+  const isSessionTokenExpired =
+    new Date() > new Date(session.refreshTokenValidUntil);
+
+  if (isSessionTokenExpired) {
+    throw createHttpError(401, 'Session token expired');
+  }
+
+  const newSession = createSession();
+
+  await Sessions.deleteOne({ _id: sessionId, refreshToken });
+
+  return await Sessions.create({
+    userId: session.userId,
+    ...newSession,
   });
 };
 
 // ********** logoutUser Service  *************
 
-export const logoutUser = async ({ sessionId, sessionToken }) => {
-  return await Session.deleteOne({
-    _id: sessionId,
-    refreshToken: sessionToken,
-  });
-};
-
-export const refreshSession = async ({ sessionId, sessionToken }) => {
-  const session = await Session.findOne({
-    _id: sessionId,
-    refreshToken: sessionToken,
-  });
-
-  if (!session) {
-    throw createHttpError(401, 'Session not found!');
-  }
-
-  if (new Date() > session.refreshTokenValidUntil) {
-    throw createHttpError(401, 'Refresh token is expired!');
-  }
-
-  const user = await User.findById(session.userId);
-
-  if (!user) {
-    throw createHttpError(401, 'Session not found!');
-  }
-
+export const logoutUser = async (sessionId) => {
   await Session.deleteOne({ _id: sessionId });
-
-  return await Session.create({
-    userId: user._id,
-    ...createSession(),
-  });
 };
 
 //відправка листа для зміни пароля

@@ -8,7 +8,7 @@ import {
 import {
   loginUserController,
   logoutController,
-  refreshTokenController,
+  refreshUserSessionController,
   registerUserController,
   requestResetEmailController,
   resetPasswordController,
@@ -31,7 +31,7 @@ authRouter.post(
   ctrlWrapper(loginUserController),
 );
 
-authRouter.post('/refresh', ctrlWrapper(refreshTokenController));
+authRouter.post('/refresh', ctrlWrapper(refreshUserSessionController));
 
 authRouter.post('/logout', ctrlWrapper(logoutController));
 
